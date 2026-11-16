@@ -34,6 +34,44 @@ DOMAIN="${DOMAIN:-}"
 SERVER_IP="${SERVER_IP:-}"
 HY2_ENABLED=1
 
+# 端口占用预检：TLS 模式需要 Caddy 独占 80/443。
+# 同台机上已有 TikTok 节点（Xray 包）或其他程序占了 443 时，直接退出并提示，
+# 避免跑到 6/7 步 docker compose up 才报错。
+port_in_use() {
+  local port="$1"
+  if command -v ss >/dev/null 2>&1; then
+    ss -tln 2>/dev/null | grep -qE "[:.]${port}[[:space:]]"
+  elif command -v netstat >/dev/null 2>&1; then
+    netstat -tln 2>/dev/null | grep -qE "[:.]${port}[[:space:]]"
+  else
+    # 无 ss/netstat 时回退读 /proc/net/tcp*（端口为 16 进制，匹配监听地址字段）
+    local hex
+    hex=$(printf '%04X' "$port")
+    grep -qiE "^[[:space:]]*[0-9]+:[[:space:]]+[0-9A-Fa-f]+:${hex}[[:space:]]" /proc/net/tcp /proc/net/tcp6 2>/dev/null
+  fi
+}
+
+check_tls_ports() {
+  [ "$TLS_MODE" = "1" ] || return 0
+  local occupied=""
+  local p
+  for p in 80 443; do
+    if port_in_use "$p"; then
+      occupied="$occupied $p"
+    fi
+  done
+  if [ -n "$occupied" ]; then
+    echo ""
+    echo "端口已被占用：$occupied"
+    echo "TLS 模式需要独占 80 和 443（Caddy 监听），装不上。"
+    echo "如果这台机上已有 TikTok 节点（Xray 包）或其他程序占了 443，请先停掉它再跑："
+    echo "  cd ~/tiktok-node-kit && docker compose down -v"
+    echo "或者换一台新服务器、新域名再跑这条命令。"
+    echo "也可以不带域名跑明文模式（临时测试，HY2/TUIC 不启用）。"
+    exit 1
+  fi
+}
+
 if [ "$DRY_RUN" = "1" ]; then
   echo "[dry-run] 只生成配置文件，不安装、不改系统"
   [ -n "$SERVER_IP" ] || SERVER_IP="203.0.113.1"
@@ -67,6 +105,9 @@ if [ -z "$DOMAIN" ]; then
 else
   echo "域名：$DOMAIN（TLS 模式，全部 6 个协议）"
 fi
+
+# TLS 模式先预检 80/443 是否被占（被占直接退出，不跑后面的步骤）
+check_tls_ports
 
 if [ "$TLS_MODE" = "0" ] && [ -z "$SERVER_IP" ]; then
   SERVER_IP="$(curl -s --max-time 5 https://api.ipify.org || true)"
