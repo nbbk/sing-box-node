@@ -2,6 +2,8 @@
 
 **核心：sing-box**（v1.14，`ghcr.io/sagernet/sing-box:latest`）。一个核心同时跑 6 个协议：VLESS、Trojan、VMess、Shadowsocks、Hysteria2、TUIC。DNS 只走加密通道、永不回落明文，主机开 BBR 加速，Clash 自动选最快的协议。
 
+> 注意：TLS 模式要独占 80 和 443。如果这台机上已有 TikTok 节点（Xray 包）或其他程序占了 443，安装脚本会在一开始直接退出并提示——先停掉旧节点或换一台新服务器再跑。
+
 > 想要 Xray 内核的版本？看 [tiktok-node](https://github.com/nbbk/tiktok-node)（核心：Xray，VLESS + WS + TLS 单协议）。
 
 在你自己的墙外服务器上跑一条命令，节点即上线。包里已把 DNS 防泄漏和速度优化做全，装完自带泄漏自检。
