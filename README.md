@@ -85,9 +85,15 @@ TikTok 从 IP、DNS、时区、SIM 卡几个地方一起判断地区，节点配
 - **HY2/TUIC 没启用**：装完提示证书未就绪时会出现，重跑一次安装命令即可补上（会换一套新节点）。
 - **sing-box 起不来**：看日志 `docker logs singbox-node --tail 30`；也可以用 `sing-box check -c sing-box.json` 校验配置。
 
+## 停止 / 删除节点
+
+- **停止（保留配置，可再启动）**：在节点目录里跑 `bash stop.sh`，会停掉容器并检查 80/443/8080/8081/8082/8388/8443/8444 是否已释放；再启动跑 `docker compose up -d`。远程一键（不用先下载）：`curl -fsSL https://raw.githubusercontent.com/nbbk/sing-box-node/main/stop.sh | bash`
+- **彻底删除**：`bash stop.sh --remove`，会删容器、数据卷、配置目录，并恢复 IPv6 与网络调优（删 `/etc/sysctl.d/99-singbox-node.conf`）。远程一键：`curl -fsSL https://raw.githubusercontent.com/nbbk/sing-box-node/main/stop.sh | bash -s -- --remove`
+- **手动停**：`docker compose down`（保留配置）或 `docker compose down -v`（连数据卷一起删）
+- stop.sh 停完会逐个检查端口（TCP 和 UDP 都查）：如果某个端口仍被占用，会直接列出占用它的进程，照着处理就行；如果占用它的是别的程序，先停掉那个程序或换一台服务器。
+
 ## 说明
 
 - 架构：有域名时 Caddy 在 443 终止 TLS，只把随机 WS 路径反代到 sing-box，其余请求返回普通网页响应（伪装）；HY2/TUIC 直接走 UDP，用 Caddy 签下的证书；SS 直连 8388
 - 链接里的 UUID/密码等同于密码，不要外传；泄露了重跑脚本即可换一套
-- 停止/卸载：在目录里运行 `docker compose down`；恢复 IPv6 与网络调优：删掉 `/etc/sysctl.d/99-singbox-node.conf` 后执行 `sysctl -p`
 - 如果 `check.sh` 显示 hosting=true（机房 IP）且之后出现 0 播放/限流，优先换住宅/ISP 的干净 IP，换节点比调参数管用
