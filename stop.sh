@@ -65,7 +65,9 @@ ENV_DIR="${COMPOSE_DIR:-$(dirname "$0")}"
 TLS_MODE=1; HTTPS_PORT=443; SS_PORT=8388; HY2_PORT=8443; TUIC_PORT=8444
 VLESS_PORT=8080; TROJAN_PORT=8081; VMESS_PORT=8082
 if [ -f "$ENV_DIR/.env" ]; then set -a; . "$ENV_DIR/.env"; set +a; fi
-SPECS=("tcp 80")
+# DNS 验证模式没映射 80，80 不用查；其他模式照旧
+SPECS=()
+if [ "$TLS_MODE" != "1" ] || [ "${CERT_METHOD:-http}" != "dns" ]; then SPECS+=("tcp 80"); fi
 if [ "$TLS_MODE" = "1" ]; then
   SPECS+=("tcp $HTTPS_PORT" "tcp $SS_PORT" "udp $SS_PORT" "udp $HY2_PORT" "udp $TUIC_PORT")
 else
@@ -101,7 +103,11 @@ if [ -n "$STILL_HELD" ]; then
   echo "如果是别的程序占了这些端口，需要先停掉那个程序，或换一台服务器。"
 else
   if [ "$TLS_MODE" = "1" ]; then
-    echo "端口 80/$HTTPS_PORT/$SS_PORT/$HY2_PORT/$TUIC_PORT 已全部释放，装新节点不会再报端口占用。"
+    if [ "${CERT_METHOD:-http}" = "dns" ]; then
+      echo "端口 $HTTPS_PORT/$SS_PORT/$HY2_PORT/$TUIC_PORT 已全部释放，装新节点不会再报端口占用。"
+    else
+      echo "端口 80/$HTTPS_PORT/$SS_PORT/$HY2_PORT/$TUIC_PORT 已全部释放，装新节点不会再报端口占用。"
+    fi
   else
     echo "端口 80/$VLESS_PORT/$TROJAN_PORT/$VMESS_PORT/$SS_PORT 已全部释放，装新节点不会再报端口占用。"
   fi
@@ -115,6 +121,14 @@ if [ "$REMOVE" = "1" ]; then
     rm -f /etc/sysctl.d/99-singbox-node.conf
     sysctl -p >/dev/null 2>&1 || true
     echo "  已删除 /etc/sysctl.d/99-singbox-node.conf（IPv6 与网络调优已恢复）"
+  fi
+  # DNS 验证模式用的自定义 Caddy 镜像也一并删（别的容器还在用就删不掉，不报错）
+  if docker image inspect caddy-cloudflare:latest >/dev/null 2>&1; then
+    if docker rmi caddy-cloudflare:latest >/dev/null 2>&1; then
+      echo "  已删除自定义 Caddy 镜像 caddy-cloudflare（DNS 验证模式用的）"
+    else
+      echo "  自定义 Caddy 镜像 caddy-cloudflare 还在被别的容器用，这次没删"
+    fi
   fi
   # 只删名字里带 sing-box-node-kit 的目录，脚本退出后再删（避免删正在执行的文件）
   if [ -n "$COMPOSE_DIR" ] && [ -f "$COMPOSE_DIR/docker-compose.yml" ]; then
