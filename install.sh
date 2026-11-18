@@ -161,6 +161,15 @@ port_owned_by_us() {
   docker ps --format '{{.Names}} {{.Ports}}' 2>/dev/null | grep -E '^singbox-(node(-[0-9]+)?|caddy) ' | grep -q ":${port}->"
 }
 
+# section 标题：统一分节横幅（前空一行，60 列分隔线，标题独占一行，再分隔线，后空一行）
+section() {
+  echo ""
+  echo "============================================================"
+  echo "  $1"
+  echo "============================================================"
+  echo ""
+}
+
 # 合法端口：1-65535 的整数（支持高位端口，如 18443、24443、30000）
 valid_port() {
   case "$1" in
@@ -887,7 +896,8 @@ caddy_reload() {
 test_node_ws() {
   local proto="$1" host="$2" port="$3" path="$4" code=""
   code="$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 -H "Connection: Upgrade" -H "Upgrade: websocket" -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" -H "Sec-WebSocket-Version: 13" "$proto://$host:$port/$path" || true)"
-  echo "WS 握手 $proto://$host:$port/$path -> HTTP ${code:-无响应}（101 = 正常；200 = Caddy 没转给 sing-box，跑 docker compose down && docker compose up -d 重建；400 = sing-box 拒绝握手）"
+  echo "  WS 握手：$proto://$host:$port/$path -> HTTP ${code:-无响应}"
+  echo "  （101 = 正常；200 = Caddy 没转给 sing-box；400 = sing-box 拒绝握手）"
 }
 
 # ---------- 部署单个节点 ----------
@@ -897,7 +907,7 @@ test_node_ws() {
 deploy_node() {
   local mode="$1"
   local n="$N"
-  echo "== 部署节点 $n（${NODE_DOMAIN:-明文}） =="
+  section "部署节点 $n（${NODE_DOMAIN:-明文}）"
   # 注册（存在则整行重写，不存在则追加；追加的节点不碰已有节点记录）
   reg_set "NODE_${n}_DOMAIN" "$NODE_DOMAIN"
   reg_set "NODE_${n}_TLS_MODE" "$NODE_TLS_MODE"
@@ -1016,11 +1026,13 @@ deploy_node() {
         [ "$code" = "200" ] && break
         sleep 3
       done
-      echo "首页 https://$NODE_DOMAIN:$NODE_HTTPS_PORT/ -> HTTP ${code:-无响应}（200 = Caddy 与证书正常）"
+      echo "  首页：https://$NODE_DOMAIN:$NODE_HTTPS_PORT/ -> HTTP ${code:-无响应}"
+      echo "  （200 = Caddy 与证书正常）"
       test_node_ws "https" "$NODE_DOMAIN" "$NODE_HTTPS_PORT" "$NODE_PATH_VLESS"
       test_node_ws "https" "$NODE_DOMAIN" "$NODE_HTTPS_PORT" "$NODE_PATH_TROJAN"
       test_node_ws "https" "$NODE_DOMAIN" "$NODE_HTTPS_PORT" "$NODE_PATH_VMESS"
-      echo "SS $NODE_SS_PORT / HY2 $NODE_HY2_PORT / TUIC $NODE_TUIC_PORT 需用客户端实测（非 HTTP 端口，curl 测不了）"
+      echo "  SS / HY2 / TUIC 端口（$NODE_SS_PORT / $NODE_HY2_PORT / $NODE_TUIC_PORT）需用客户端实测"
+      echo "  （非 HTTP 端口，curl 测不了）"
     else
       test_node_ws "http" "$NODE_SERVER_IP" "$NODE_VLESS_PORT" "$NODE_PATH_VLESS"
       test_node_ws "http" "$NODE_SERVER_IP" "$NODE_TROJAN_PORT" "$NODE_PATH_TROJAN"
@@ -1047,40 +1059,52 @@ deploy_node() {
       make_qr "$NODE_LINK_HY2" "${qr_prefix}hy2.png" && make_qr "$NODE_LINK_TUIC" "${qr_prefix}tuic.png" || qr_ok=0
     fi
   fi
-  echo ""
   if [ "$mode" = "fresh" ]; then
-    echo "================ 部署完成 ================"
+    section "部署完成"
   else
-    echo "================ 追加完成 ================"
+    section "追加完成"
   fi
   if [ "$NODE_TLS_MODE" = "1" ]; then
     if [ "$NODE_CERT_METHOD" = "dns" ]; then
-      echo "证书方式：DNS 验证（Cloudflare），泛域名证书 *.$(reg_get GLOBAL_BASE_DOMAIN)，续签全自动，不用管 80 端口"
+      echo "  证书方式：DNS 验证（Cloudflare），泛域名证书 *.$(reg_get GLOBAL_BASE_DOMAIN)"
+      echo "  续签全自动，不用管 80 端口"
     else
-      echo "证书方式：默认走 80（HTTP-01）；证书剩余天数用 bash check.sh 看"
+      echo "  证书方式：默认走 80（HTTP-01）；证书剩余天数用 bash check.sh 看"
     fi
   fi
-  echo "节点链接（小火箭/Clash 可直接导入）："
-  echo "VLESS:  $NODE_LINK_VLESS"
-  echo "Trojan: $NODE_LINK_TROJAN"
-  echo "VMess:  $NODE_LINK_VMESS"
-  echo "SS:     $NODE_LINK_SS"
+  echo ""
+  echo "  节点链接（小火箭/Clash 可直接导入）："
+  echo "  VLESS："
+  echo "$NODE_LINK_VLESS"
+  echo "  Trojan："
+  echo "$NODE_LINK_TROJAN"
+  echo "  VMess："
+  echo "$NODE_LINK_VMESS"
+  echo "  SS："
+  echo "$NODE_LINK_SS"
   if [ -n "$NODE_LINK_HY2" ]; then
-    echo "HY2:    $NODE_LINK_HY2"
-    echo "TUIC:   $NODE_LINK_TUIC"
+    echo "  HY2："
+    echo "$NODE_LINK_HY2"
+    echo "  TUIC："
+    echo "$NODE_LINK_TUIC"
   fi
   echo ""
-  echo "订阅内容（base64，含全部可用协议）："
+  echo "  订阅内容（base64，含全部可用协议）："
   echo "$NODE_SUB"
   echo ""
-  echo "Clash 配置已生成：$(pwd)/$(node_field "$n" CLASH)（DNS 全走代理、禁 IPv6，直接导入 Clash/Stash）"
+  echo "  Clash 配置已生成：$(pwd)/$(node_field "$n" CLASH)"
+  echo "  （DNS 全走代理、禁 IPv6，直接导入 Clash/Stash）"
   if [ "$qr_ok" = "1" ]; then
-    echo "二维码已生成：$(pwd)/${qr_prefix}vless.png ${qr_prefix}trojan.png ${qr_prefix}vmess.png ${qr_prefix}ss.png（TLS 模式另有 ${qr_prefix}hy2.png ${qr_prefix}tuic.png），下载到手机扫码即可"
+    echo "  二维码已生成，位置：$(pwd)/（下载到手机扫码即可）"
+    echo "  ${qr_prefix}vless.png  ${qr_prefix}trojan.png  ${qr_prefix}vmess.png  ${qr_prefix}ss.png"
+    if [ -n "$NODE_LINK_HY2" ]; then
+      echo "  ${qr_prefix}hy2.png  ${qr_prefix}tuic.png（TLS 模式）"
+    fi
   else
-    echo "本机没生成二维码：把上面的节点链接发给 Muse，它会回你二维码图片。"
+    echo "  本机没生成二维码：把上面的节点链接发给 Muse，它会回你二维码图片。"
   fi
   echo ""
-  echo "注意：链接里的 UUID/密码等同于密码，不要外传。"
+  echo "  注意：链接里的 UUID/密码等同于密码，不要外传。"
 }
 
 # 追加节点问端口：ask_port + 已占端口重问（与已有节点端口重复时 ask_port 内部已重问；主机被占时这里重问）
@@ -1122,11 +1146,14 @@ add_node_flow() {
 
   if [ "$g_tls" = "1" ]; then
     if [ "$g_cm" = "dns" ]; then
-      echo "== 追加节点 $N（TLS 模式，证书方式沿用首次安装的选择：DNS 验证（Cloudflare），泛域名证书 *.${g_base} 通吃所有子域名） =="
+      section "追加节点 $N（TLS 模式）"
+      echo "  证书方式沿用首次安装的选择：DNS 验证（Cloudflare），泛域名证书 *.${g_base} 通吃所有子域名"
     else
-      echo "== 追加节点 $N（TLS 模式，证书方式沿用首次安装的选择：默认走 80（HTTP-01），Caddy 逐个子域名自动签） =="
+      section "追加节点 $N（TLS 模式）"
+      echo "  证书方式沿用首次安装的选择：默认走 80（HTTP-01），Caddy 逐个子域名自动签"
     fi
-    echo "每个节点一个子域名；推荐先在 DNS 加一条泛域名 A 记录：*.${g_base} -> 落地机 IP，一次配好，以后加节点不用再改 DNS。"
+    echo "每个节点一个子域名；推荐先在 DNS 加一条泛域名 A 记录："
+    echo "  *.${g_base} -> 落地机 IP，一次配好，以后加节点不用再改 DNS。"
     local sugg="us${N}.${g_base}"
     local new_domain="${MODE_ARG:-}"
     while :; do
@@ -1135,19 +1162,20 @@ add_node_flow() {
         read_line new_domain "新节点域名（默认 $sugg，直接回车就是 $sugg）： "
         [ -z "$new_domain" ] && new_domain="$sugg"
       fi
-      if ! valid_domain "$new_domain"; then echo "域名不合法：$new_domain（要是小写字母/数字/点/连字符，至少一个点），请重新输入。"; new_domain=""; continue; fi
+      if ! valid_domain "$new_domain"; then echo "域名不合法：$new_domain"; echo "要是小写字母/数字/点/连字符，至少一个点，请重新输入。"; new_domain=""; continue; fi
       if find_node_by_domain "$new_domain" >/dev/null 2>&1; then echo "域名 $new_domain 已经被节点占用了，请换一个子域名。"; new_domain=""; continue; fi
       if [ "$g_cm" = "dns" ]; then
         case "$new_domain" in
           "$g_base"|*".$g_base") ;;
-          *) echo "DNS 验证模式下新节点域名必须是泛域名证书覆盖的范围（$g_base 或它下面的子域名），$new_domain 不在范围内，请换一个。"; new_domain=""; continue ;;
+          *) echo "DNS 验证模式下新节点域名必须是泛域名证书覆盖的范围（$g_base 或它下面的子域名）"; echo "$new_domain 不在范围内，请换一个。"; new_domain=""; continue ;;
         esac
       fi
       break
     done
     NODE_DOMAIN="$new_domain"
   else
-    echo "== 追加节点 $N（明文模式，不用域名，各节点用不同 WS 端口） =="
+    section "追加节点 $N（明文模式）"
+    echo "  不用域名，各节点用不同 WS 端口"
     NODE_DOMAIN=""
   fi
 
@@ -1215,7 +1243,8 @@ del_node_flow() {
     echo "没有可删除的节点（还没装过节点，或 nodes.conf 不在）。"
     exit 1
   fi
-  echo "== 删除单个节点（其他节点不受影响） =="
+  section "删除单个节点"
+  echo "  其他节点不受影响"
   echo "当前节点："
   local i
   for i in $(node_indices); do
@@ -1383,7 +1412,7 @@ if [ "$DRY_RUN" = "1" ]; then
   [ -n "$SERVER_IP" ] || SERVER_IP="203.0.113.1"
 fi
 
-echo "== 1/8 检查 Docker =="
+section "1/8 检查 Docker"
 if [ "$DRY_RUN" != "1" ]; then
   if ! command -v docker >/dev/null 2>&1; then
     echo "未检测到 Docker，正在安装..."
@@ -1392,7 +1421,7 @@ if [ "$DRY_RUN" != "1" ]; then
   docker compose version >/dev/null 2>&1 || { echo "缺少 Docker Compose 插件，请先安装 docker-compose-plugin"; exit 1; }
 fi
 
-echo "== 2/8 域名（可空） =="
+section "2/8 域名（可空）"
 # 优先级：命令行参数 > .env > 环境变量 > 交互输入 > 留空走明文
 # 端口只接受命令行/环境变量预设；.env 里上次的端口只作安装记录（给 check.sh / stop.sh 读），
 # 重跑要换端口时仍会问，不会被旧值悄悄定死
@@ -1461,7 +1490,7 @@ fi
 
 # 公开端口：默认即当前端口，直接回车就行；默认端口被占时可改高位端口避开
 echo ""
-echo "== 3/8 公开端口（可自定义） =="
+section "3/8 公开端口（可自定义）"
 if [ "$TLS_MODE" = "1" ]; then
   echo "TLS 模式：HTTPS 端口默认 443，SS 默认 8388，HY2 默认 8443，TUIC 默认 8444。"
   if [ "$CERT_METHOD" = "dns" ]; then
@@ -1496,7 +1525,7 @@ if [ "$TLS_MODE" = "0" ] && [ -z "$SERVER_IP" ]; then
   [ -n "$SERVER_IP" ] || { echo "拿不到本机公网 IP，请手动在 .env 写 SERVER_IP=你的IP 后重跑"; exit 1; }
 fi
 
-echo "== 4/8 生成凭据与 WS 路径 =="
+section "4/8 生成凭据与 WS 路径"
 N=1
 NODE_DOMAIN="$DOMAIN"
 NODE_TLS_MODE="$TLS_MODE"
@@ -1531,7 +1560,7 @@ if [ "$TLS_MODE" = "1" ]; then
   reg_set "GLOBAL_BASE_DOMAIN" "$(base_domain "$DOMAIN")"
 fi
 
-echo "== 5/8 禁用 IPv6 + 网络加速（BBR / 缓冲 / TFO） =="
+section "5/8 禁用 IPv6 + 网络加速（BBR / 缓冲 / TFO）"
 if [ "$DRY_RUN" != "1" ]; then
   cat > /etc/sysctl.d/99-singbox-node.conf <<'SYSCTL'
 # sing-box 节点：禁用 IPv6（堵死 IPv6 泄漏口）+ BBR 加速 + TCP 缓冲 + TFO
@@ -1563,7 +1592,7 @@ else
   echo "[dry-run] 跳过写 /etc/sysctl.d"
 fi
 
-echo "== 6/8 写入配置 =="
+section "6/8 写入配置"
 deploy_node fresh
 
 echo ""
@@ -1579,7 +1608,16 @@ pass() { echo "  [通过] $1"; }
 warn() { echo "  [注意] $1"; }
 fail() { echo "  [风险] $1"; }
 
-echo "== 1/7 节点 IP 与地区 =="
+# section 标题：统一分节横幅（前空一行，60 列分隔线，标题独占一行，再分隔线，后空一行）
+section() {
+  echo ""
+  echo "============================================================"
+  echo "  $1"
+  echo "============================================================"
+  echo ""
+}
+
+section "1/7 节点 IP 与地区"
 IPJSON="$(curl -s --max-time 10 "https://ip-api.org/json/" || true)"
 if [ -z "$IPJSON" ]; then
   warn "ip-api.org 查不到，改用 ipinfo.io"
@@ -1602,8 +1640,8 @@ print(f"  节点 IP：{ip}")
 print(f"  地区：{country} {cc} / {city}")
 print(f"  运营商/机房：{isp}")
 if hosting is True:
-    print("  [风险] 这是机房 IP（hosting=true）。TikTok 对机房 IP 风控更严，")
-    print("        容易限流/0播放。如果之后播放量异常，优先换住宅/ISP 的干净 IP。")
+    print("  [风险] 机房 IP（hosting=true），TikTok 风控更严，容易限流/0播放")
+    print("       如果之后播放量异常，优先换住宅/ISP 的干净 IP。")
 elif hosting is False:
     print("  [通过] 看起来是住宅/ISP IP（hosting=false），TikTok 风控相对友好。")
 else:
@@ -1613,13 +1651,13 @@ else
   echo "  原始结果：$IPJSON"
 fi
 
-echo ""
-echo "== 2/7 IPv6 是否禁用 =="
+section "2/7 IPv6 是否禁用"
 V6="$(sysctl -n net.ipv6.conf.all.disable_ipv6 2>/dev/null || echo "?")"
 if [ "$V6" = "1" ]; then
   pass "IPv6 已禁用（disable_ipv6=1）"
 else
-  fail "IPv6 未禁用（disable_ipv6=$V6）。跑 install.sh 时会自动禁用；手动执行："
+  fail "IPv6 未禁用（disable_ipv6=$V6），install.sh 会自动禁用"
+  echo "       手动执行："
   echo "       echo 'net.ipv6.conf.all.disable_ipv6 = 1' >> /etc/sysctl.d/99-singbox-node.conf && sysctl -p"
 fi
 if ip -6 addr show scope global 2>/dev/null | grep -q "inet6"; then
@@ -1628,8 +1666,7 @@ else
   pass "本机无全局 IPv6 地址"
 fi
 
-echo ""
-echo "== 3/7 DNS 解析路径 =="
+section "3/7 DNS 解析路径"
 if command -v dig >/dev/null 2>&1; then
   RESOLVER="$(dig +short whoami.akamai.net @1.1.1.1 2>/dev/null | head -1)"
   [ -n "$RESOLVER" ] && echo "  经 1.1.1.1 解析的出口解析器 IP：$RESOLVER（应为 Cloudflare 的 IP，非国内运营商）"
@@ -1639,8 +1676,7 @@ else
 fi
 echo "  sing-box 已配置 DoH(1.1.1.1/8.8.8.8/9.9.9.9)+DoT、只解析 IPv4，服务端不再走明文 UDP 53"
 
-echo ""
-echo "== 4/7 TikTok 可达性（从节点 IP 出口测） =="
+section "4/7 TikTok 可达性（从节点 IP 出口测）"
 TT_CODE="$(curl -s -o /dev/null -w "%{http_code}" --max-time 15 "https://www.tiktok.com/" || echo "000")"
 API_CODE="$(curl -s -o /dev/null -w "%{http_code}" --max-time 15 "https://api16-normal-c-useast1a.tiktokv.com/" || echo "000")"
 echo "  tiktok.com -> HTTP $TT_CODE"
@@ -1651,17 +1687,17 @@ else
   fail "TikTok 主站从节点 IP 不可达（HTTP $TT_CODE），检查节点 IP 是否被 TikTok 拉黑或出站被墙"
 fi
 
-echo ""
-echo "== 5/7 手机端自查（在手机上开着节点做） =="
+section "5/7 手机端自查（在手机上开着节点做）"
 echo "  节点只能管服务端这一半，手机端泄漏要这样验："
-echo "  1) 打开 https://www.dnsleaktest.com 点 Extended test："
-echo "     全部 DNS 服务器 IP 应该都是节点所在国家/机房的，出现中国运营商 DNS = 泄漏"
-echo "  2) 打开 https://browserleaks.com/ip："
-echo "     不能出现你的真实 IP、不能出现 IPv6 地址、时区/语言要和节点地区一致"
-echo "  3) TikTok 里刷几个视频再看个人主页地区：应与节点地区一致"
-echo "  4) 手机设置核对（见 README）：已拔国内 SIM 卡、时区语言=节点地区、定位已关"
-echo ""
-echo "== 6/7 公开端口监听 =="
+echo "  1) 打开 https://www.dnsleaktest.com，点 Extended test"
+echo "     全部 DNS 服务器 IP 应是节点所在国家/机房的，出现中国运营商 DNS = 泄漏"
+echo "  2) 打开 https://browserleaks.com/ip"
+echo "     不能出现你的真实 IP，不能出现 IPv6 地址，时区/语言要和节点地区一致"
+echo "  3) TikTok 里刷几个视频，再看个人主页地区"
+echo "     应与节点地区一致"
+echo "  4) 手机设置核对（见 README）"
+echo "     已拔国内 SIM 卡，时区语言=节点地区，定位已关"
+section "6/7 公开端口监听"
 # 节点列表：有 nodes.conf 时逐节点读（install.sh --add-node 维护）；没有就按旧版单节点（.env）读
 CK_DIR="$(cd "$(dirname "$0")" && pwd)"
 CK_REG="$CK_DIR/nodes.conf"
@@ -1720,7 +1756,8 @@ if [ -f "$CK_REG" ]; then
         check_port "节点 $_ni（$_dom）Hysteria2" "$(ck_node_field "$_ni" HY2_PORT)" udp
         check_port "节点 $_ni（$_dom）TUIC" "$(ck_node_field "$_ni" TUIC_PORT)" udp
       else
-        echo "  节点 $_ni（$_dom）Hysteria2/TUIC 未启用（证书没拿到时自动去掉的，重跑 install.sh 可补上）"
+        echo "  节点 $_ni（$_dom）Hysteria2/TUIC 未启用"
+        echo "       证书没拿到时自动去掉的，重跑 install.sh 可补上"
       fi
     else
       check_port "节点 $_ni（明文）VLESS" "$(ck_node_field "$_ni" VLESS_PORT)" tcp
@@ -1736,7 +1773,8 @@ else
     set -a; . "$CK_DIR/.env"; set +a
     echo "  端口配置来自 $CK_DIR/.env"
   else
-    echo "  未找到 .env，按默认端口检查（TLS：HTTPS 443 / SS 8388 / HY2 8443 / TUIC 8444；明文：8080/8081/8082/8388）"
+    echo "  未找到 .env，按默认端口检查"
+    echo "       TLS：HTTPS 443 / SS 8388 / HY2 8443 / TUIC 8444；明文：8080/8081/8082/8388"
   fi
   TLS_MODE="${TLS_MODE:-1}"
   HTTPS_PORT="${HTTPS_PORT:-443}"; SS_PORT="${SS_PORT:-8388}"; HY2_PORT="${HY2_PORT:-8443}"; TUIC_PORT="${TUIC_PORT:-8444}"
@@ -1753,8 +1791,7 @@ else
     check_port "Shadowsocks" "$SS_PORT" both
   fi
 fi
-echo ""
-echo "== 7/7 证书与续签 =="
+section "7/7 证书与续签"
 # 证书方式与到期天数：TLS 节点逐个查；有 nodes.conf 时逐节点读，没有就按旧版单节点（.env）读
 # DNS 验证用一张泛域名证书，所有 TLS 节点共用，只查一次
 ck_cert_days() {  # ck_cert_days 节点名 域名 HTTPS端口 证书方式
@@ -1769,7 +1806,8 @@ ck_cert_days() {  # ck_cert_days 节点名 域名 HTTPS端口 证书方式
     fi
   else
     echo "  节点 $name（$dom）：证书方式默认走 80（HTTP-01），续签要走 80 端口"
-    echo "  注意：如果域名现在指向中转、且 80 没转到这台机，续签会失败，见 README“手动续签”一节"
+    warn "如果域名现在指向中转、且 80 没转到这台机，续签会失败"
+    echo "       见 README“手动续签”一节"
   fi
   if command -v openssl >/dev/null 2>&1; then
     local end="" end_epoch="" now_epoch="" days=""
@@ -1781,9 +1819,11 @@ ck_cert_days() {  # ck_cert_days 节点名 域名 HTTPS端口 证书方式
         days="$(( (end_epoch - now_epoch) / 86400 ))"
         echo "  证书到期日：$end（剩余约 $days 天）"
         if [ "$days" -lt 0 ]; then
-          fail "节点 $name：证书已过期 $(( -days )) 天！节点已不可用，立即按 README“手动续签”处理"
+          fail "节点 $name：证书已过期 $(( -days )) 天，节点已不可用"
+          echo "       立即按 README“手动续签”处理"
         elif [ "$days" -le 14 ]; then
-          warn "节点 $name：证书 14 天内到期；Caddy 会在到期前 30 天内自动续签，到期还没续上就按 README“手动续签”处理"
+          warn "节点 $name：证书 14 天内到期，Caddy 会在到期前 30 天内自动续签"
+          echo "       到期还没续上就按 README“手动续签”处理"
         elif [ "$days" -le 30 ]; then
           pass "节点 $name：证书剩余 $days 天，Caddy 会自动续签"
         else
@@ -1828,7 +1868,8 @@ else
     echo "  证书方式：DNS 验证（Cloudflare），续签全自动，不用管 80 端口"
   else
     echo "  证书方式：默认走 80（HTTP-01），续签要走 80 端口"
-    echo "  注意：如果域名现在指向中转、且 80 没转到这台机，续签会失败，见 README“手动续签”一节"
+    warn "如果域名现在指向中转、且 80 没转到这台机，续签会失败"
+    echo "       见 README“手动续签”一节"
   fi
   if [ -n "${DOMAIN:-}" ]; then
     ck_cert_days "节点 1" "${DOMAIN:-}" "${HTTPS_PORT:-443}" "${CERT_METHOD:-http}"
@@ -1836,8 +1877,7 @@ else
     warn "没找到域名（.env 不在），看不到证书剩余天数"
   fi
 fi
-echo ""
-echo "自检完成。"
+section "自检完成"
 CHECK_EOF
 chmod +x check.sh
 
