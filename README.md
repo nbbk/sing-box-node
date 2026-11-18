@@ -2,7 +2,7 @@
 
 **核心：sing-box**（v1.14，`ghcr.io/sagernet/sing-box:latest`）。一个核心同时跑 6 个协议：VLESS、Trojan、VMess、Shadowsocks、Hysteria2、TUIC。DNS 只走加密通道、永不回落明文，主机开 BBR 加速，Clash 自动选最快的协议。
 
-> 注意：TLS 模式要独占 80 端口（Caddy 签证书走 HTTP-01 验证必须用 80，改不了）和 HTTPS 端口（默认 443）。如果这台机上已有 TikTok 节点（Xray 包）或其他程序占了 443，安装时会问你要不要把 HTTPS 端口改成高位端口（如 8443）再装，不用换服务器。
+> 注意：选默认走 80 方式签证书时，TLS 模式要独占 80 端口（Caddy 签证书走 HTTP-01 验证必须用 80，改不了）和 HTTPS 端口（默认 443）。如果这台机上已有 TikTok 节点（Xray 包）或其他程序占了 443，安装时会问你要不要把 HTTPS 端口改成高位端口（如 8443）再装，不用换服务器。选 DNS 验证时 80 不用空闲（见“证书签发方式”一节）。
 
 > 想要 Xray 内核的版本？看 [tiktok-node](https://github.com/nbbk/tiktok-node)（核心：Xray，VLESS + WS + TLS 单协议）。
 
@@ -17,7 +17,7 @@
 ## 前置条件
 
 - 一台墙外服务器（你机场现有的机器就行），Ubuntu/Debian，root 权限
-- 一个域名，已解析（A 记录）到这台机器，80 端口放行——**有域名强烈建议用**，Caddy 会自动签 TLS 证书，6 个协议全开；**80 端口必须空闲**（签证书走 HTTP-01 验证必须用 80，改不了；80 被占 TLS 装不了，只能换服务器或改用明文）
+- 一个域名，已解析（A 记录）到这台机器，80 端口放行——**有域名强烈建议用**，Caddy 会自动签 TLS 证书，6 个协议全开；选默认走 80 方式签证书时 **80 端口必须空闲**（签证书走 HTTP-01 验证必须用 80，改不了；80 被占 TLS 装不了，只能换服务器或改用明文）；选 DNS 验证时 80 不用空闲（见“证书签发方式”一节）
   - 没有域名也能跑：直接回车跳过，用 IP 明文 WS（VLESS 8080 / Trojan 8081 / VMess 8082 + SS 8388），HY2/TUIC 不启用（需要域名证书），之后补域名重跑即可升级
 - 服务器地区 = 你要做的 TikTok 地区（美区、东南亚、英国……），**节点 IP 的地区必须和运营地区一致**，否则直接限流
 - IP 尽量干净：住宅/ISP 的 IP 最好；机房 IP 也能跑，但 TikTok 风控更严，`check.sh` 会告诉你当前 IP 是不是机房 IP
@@ -32,7 +32,7 @@
 curl -fsSL https://raw.githubusercontent.com/nbbk/sing-box-node/main/install.sh | bash
 ```
 
-也可以把域名直接跟在命令后面（比如 `... | bash -s yinni.930327.xyz`）。换服务器、换地区时不用改脚本：域名先解析到新服务器，再跑同一条命令、输入新域名即可；每次运行都会生成新的 UUID/密码和 WS 路径，每个服务器一套独立的节点。
+也可以把域名直接跟在命令后面（比如 `... | bash -s example.com`）。换服务器、换地区时不用改脚本：域名先解析到新服务器，再跑同一条命令、输入新域名即可；每次运行都会生成新的 UUID/密码和 WS 路径，每个服务器一套独立的节点。
 
 ### 本地安装（传包）
 
@@ -61,7 +61,7 @@ curl -fsSL https://raw.githubusercontent.com/nbbk/sing-box-node/main/install.sh 
 - TLS 模式：HTTPS 端口（默认 443，例如改 8443）、SS（默认 8388，例如改 18388）、HY2（默认 8443，例如改 18443）、TUIC（默认 8444，例如改 18444）
 - 明文模式：VLESS（默认 8080，例如改 18080）、Trojan（默认 8081，例如改 18081）、VMess（默认 8082，例如改 18082）、SS（默认 8388，例如改 18388）
 
-注意两点：**80 端口必须空闲**，Caddy 签证书走 HTTP-01 验证必须用 80，改不了——80 被占时 TLS 装不了，只能停掉占用 80 的程序、换服务器，或改用明文模式；HTTPS 端口也不能填 80。改完端口后，节点链接、`clash.yaml`、二维码里的端口都会跟着变，不用手动改。
+注意两点：选默认走 80 方式签证书时 **80 端口必须空闲**，Caddy 签证书走 HTTP-01 验证必须用 80，改不了——80 被占时 TLS 装不了，只能停掉占用 80 的程序、换服务器，或改用明文模式，或重跑并选 [2] DNS 验证（要 Cloudflare API 令牌）；选 DNS 验证时 80 不用空闲。HTTPS 端口也不能填 80。改完端口后，节点链接、`clash.yaml`、二维码里的端口都会跟着变，不用手动改。
 
 也可以用环境变量预设端口（有就不再问），例如：
 
@@ -70,6 +70,36 @@ HTTPS_PORT=8443 SS_PORT=18388 HY2_PORT=18443 TUIC_PORT=18444 bash install.sh 你
 ```
 
 安装完的实际端口记在安装目录的 `.env` 里（`check.sh` / `stop.sh` 从这里读）；重跑安装要换端口时仍会问，不会被上次的值悄悄定死（域名除外，域名会沿用 `.env` 里的，换域名用 `bash install.sh 新域名` 或改 `.env`）。
+
+## 证书签发方式（安装时二选一，默认走 80）
+
+有域名时安装会问一次，每个选项下面都有解释，直接回车就是默认：
+
+- **[1] 默认走 80（HTTP-01）**：最简单，什么都不用准备，装完 Caddy 自己签证书、到期自己续。前提是 80 端口必须空闲、域名要指向这台落地机。适合单节点、80 没被占的情况。
+- **[2] DNS 验证（Cloudflare，DNS-01）**：不用 80 端口，域名不用改来改去，续签全自动，不怕忘。前提是域名 DNS 在 Cloudflare，要去 Cloudflare 后台开一个只给改 DNS 权限的 API 令牌。适合 80 被占了、多节点、怕忘续签的情况。
+
+开令牌的方法：登录 Cloudflare 后台 → 右上角头像 → My Profile → API Tokens → Create Token → 用“Edit zone DNS”模板 → 权限里只留 Zone:DNS:Edit（和 Zone:Zone:Read），Zone Resources 选你的域名所在的 zone → Create Token，把生成的令牌粘贴给安装脚本。**不要用 Global API Key**（权限太大，泄露了整个账号都危险）。令牌只存在服务器的 `.env` 里（600 权限，只有 root 能读），脚本不会把它打印出来。
+
+也可以提前预设好，安装时不再问（令牌放命令行会进 shell 历史，不放心就安装时交互粘贴，输入时不回显）：
+
+```
+CERT_METHOD=dns CLOUDFLARE_API_TOKEN=你的令牌 bash install.sh example.com
+```
+
+选 DNS 验证后 80 的变化：Caddy 不再把 80 映射到主机，80 被别的程序占着也不影响安装和续签；Caddy 容器会换成现场编译的带 Cloudflare 插件版本（官方 builder 镜像编，第一次约 1-3 分钟，之后复用），证书续签全自动。
+
+## 手动续签（证书快到期、自动续签失败时）
+
+证书是 Let's Encrypt 的 90 天证书，Caddy 会在到期前 30 天内自动续签，平时不用你管。**只有一种情况要手动续签**：签证书走默认 80 方式（HTTP-01）、且域名现在指向中转机、80 又没转到这台落地机时——也就是中转后面第 2 个及以后的落地。Caddy 续签要走 80 端口验证，验证请求到了中转的 80，却转给了第 1 个落地，续不上。**选了 DNS 验证的落地不需要手动续签**，续签全自动。
+
+手动续签的步骤（到期前 2 周内做，别太早——Caddy 只在到期前 30 天内才开始续）：
+
+1. 先看证书还剩几天：在落地机上跑 `cd ~/sing-box-node-kit && bash check.sh`，看“证书与续签”一节（剩 30 天以内才能续）
+2. 把域名 A 记录改回指向落地机 IP（在 Cloudflare DNS 里改这条 A 记录）
+3. 等 DNS 生效（TTL 一般 5 分钟）；核对：`dig +short example.com` 返回的应该是落地机 IP（例如 203.0.113.1）
+4. 重启 Caddy 触发续签：在落地机目录里跑 `cd ~/sing-box-node-kit && docker compose restart caddy`（或 `docker restart singbox-caddy`）
+5. 核对新到期日：再跑 `bash check.sh`，看“证书与续签”一节，剩余天数应该回到 90 天左右
+6. 把域名 A 记录改回指向中转机 IP，完事
 
 ## 手机端（关键：节点只解决网络这一半）
 
@@ -104,7 +134,7 @@ TikTok 从 IP、DNS、时区、SIM 卡几个地方一起判断地区，节点配
 - **节点没网、手机全打不开**：先在服务器上测 WS 握手（装完脚本会自动测）：
   `curl -s -i -N --max-time 10 -H "Connection: Upgrade" -H "Upgrade: websocket" -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" -H "Sec-WebSocket-Version: 13" https://你的域名/WS路径`
   返回 `101` = 正常；返回 `200 ok` = Caddy 没把请求转给 sing-box，跑 `docker compose down && docker compose up -d` 重建容器再测；返回 `400` = sing-box 拒绝握手，核对手机上的 UUID 和 WS 路径跟 sing-box.json 是否一致。
-- **Caddy 拿不到证书**：核对域名 A 记录指到本机 IP、云厂商安全组放行 80 端口和 HTTPS 端口（80 必须空闲，签证书走 HTTP-01 验证必须用 80）；看日志 `docker logs singbox-caddy --tail 20`。
+- **Caddy 拿不到证书**：走 80 方式时核对域名 A 记录指到本机 IP、云厂商安全组放行 80 端口和 HTTPS 端口（80 必须空闲，签证书走 HTTP-01 验证必须用 80）；选 DNS 验证时核对 Cloudflare 令牌没错、权限够（Zone:DNS:Edit）、域名 DNS 确实在 Cloudflare；看日志 `docker logs singbox-caddy --tail 20`。
 - **HY2/TUIC 没启用**：装完提示证书未就绪时会出现，重跑一次安装命令即可补上（会换一套新节点）。
 - **sing-box 起不来**：看日志 `docker logs singbox-node --tail 30`；也可以用 `sing-box check -c sing-box.json` 校验配置。
 
@@ -117,6 +147,6 @@ TikTok 从 IP、DNS、时区、SIM 卡几个地方一起判断地区，节点配
 
 ## 说明
 
-- 架构：有域名时 Caddy 在 HTTPS 端口（默认 443，可自定义高位端口）终止 TLS，只把随机 WS 路径反代到 sing-box，其余请求返回普通网页响应（伪装）；HY2/TUIC 直接走 UDP，用 Caddy 签下的证书；SS 直连（默认 8388，可自定义）
+- 架构：有域名时 Caddy 在 HTTPS 端口（默认 443，可自定义高位端口）终止 TLS，只把随机 WS 路径反代到 sing-box，其余请求返回普通网页响应（伪装）；HY2/TUIC 直接走 UDP，用 Caddy 签下的证书；SS 直连（默认 8388，可自定义）；80 端口只用于证书验证（选 DNS 验证时不用 80，见“证书签发方式”一节）
 - 链接里的 UUID/密码等同于密码，不要外传；泄露了重跑脚本即可换一套
 - 如果 `check.sh` 显示 hosting=true（机房 IP）且之后出现 0 播放/限流，优先换住宅/ISP 的干净 IP，换节点比调参数管用
