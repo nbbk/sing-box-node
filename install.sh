@@ -601,6 +601,11 @@ gen_compose() {
       echo "    image: ghcr.io/sagernet/sing-box:latest"
       echo "    container_name: $ctr"
       echo "    restart: unless-stopped"
+      echo "    logging:"
+      echo "      driver: json-file"
+      echo "      options:"
+      echo "        max-size: \"10m\""
+      echo "        max-file: \"3\""
       echo "    command: run -c /etc/sing-box/config.json"
       echo "    volumes:"
       echo "      - ./$cfg:/etc/sing-box/config.json:ro"
@@ -633,6 +638,11 @@ gen_compose() {
       fi
       echo "    container_name: singbox-caddy"
       echo "    restart: unless-stopped"
+      echo "    logging:"
+      echo "      driver: json-file"
+      echo "      options:"
+      echo "        max-size: \"10m\""
+      echo "        max-file: \"3\""
       if [ "$cm" = "dns" ]; then
         echo "    environment:"
         echo '      - CLOUDFLARE_API_TOKEN=${CLOUDFLARE_API_TOKEN}'

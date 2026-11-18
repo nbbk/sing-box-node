@@ -192,6 +192,12 @@ TikTok 从 IP、DNS、时区、SIM 卡几个地方一起判断地区，节点配
 - **HY2/TUIC 没启用**：装完提示证书未就绪时会出现，重跑一次安装命令即可补上（会换一套新节点）。
 - **sing-box 起不来**：看日志 `docker logs singbox-node --tail 30`；也可以用 `sing-box check -c sing-box.json` 校验配置。
 
+## 日志上限（防爆盘）
+
+- 每个容器（sing-box、caddy）的日志都有限制：单个文件最多 10MB、最多留 3 份，写满自动轮转，不会像没上限的 json 日志那样一直长到撑爆磁盘。
+- **限制只对重建后的容器生效**：已经在跑的容器要重建一次才限流——在节点目录里跑 `docker compose down && docker compose up -d`（配置不动，只重建容器），或重跑安装命令。
+- 定期看一眼各容器日志占了多少：`docker system df`，或 `du -sh /var/lib/docker/containers/* | sort -rh | head`。
+
 ## 停止 / 删除节点
 
 - **停止（保留配置，可再启动）**：在节点目录里跑 `bash stop.sh`，会停掉**全部节点**的容器并按 `nodes.conf` 里记录的实际端口检查是否已释放（旧版单节点按 `.env` 里的记录，默认 80/443/8080/8081/8082/8388/8443/8444）；再启动跑 `docker compose up -d`。远程一键（不用先下载）：`curl -fsSL https://raw.githubusercontent.com/nbbk/sing-box-node/main/stop.sh | bash`
