@@ -60,10 +60,22 @@ port_in_use() {
   fi
 }
 
+# 端口从安装目录的 .env 读（install.sh 安装时写入实际端口）；没有 .env 就用默认端口
+ENV_DIR="${COMPOSE_DIR:-$(dirname "$0")}"
+TLS_MODE=1; HTTPS_PORT=443; SS_PORT=8388; HY2_PORT=8443; TUIC_PORT=8444
+VLESS_PORT=8080; TROJAN_PORT=8081; VMESS_PORT=8082
+if [ -f "$ENV_DIR/.env" ]; then set -a; . "$ENV_DIR/.env"; set +a; fi
+SPECS=("tcp 80")
+if [ "$TLS_MODE" = "1" ]; then
+  SPECS+=("tcp $HTTPS_PORT" "tcp $SS_PORT" "udp $SS_PORT" "udp $HY2_PORT" "udp $TUIC_PORT")
+else
+  SPECS+=("tcp $VLESS_PORT" "tcp $TROJAN_PORT" "tcp $VMESS_PORT" "tcp $SS_PORT" "udp $SS_PORT")
+fi
+
 echo ""
 echo "端口检查："
 STILL_HELD=""
-for spec in "tcp 80" "tcp 443" "tcp 8080" "tcp 8081" "tcp 8082" "tcp 8388" "udp 8388" "udp 8443" "udp 8444"; do
+for spec in "${SPECS[@]}"; do
   set -- $spec
   if port_in_use "$1" "$2"; then
     echo "  端口 $2/$1 仍被占用："
@@ -88,7 +100,11 @@ if [ -n "$STILL_HELD" ]; then
   echo "  docker rm -f <容器名>"
   echo "如果是别的程序占了这些端口，需要先停掉那个程序，或换一台服务器。"
 else
-  echo "端口 80/443/8080/8081/8082/8388/8443/8444 已全部释放，装新节点不会再报端口占用。"
+  if [ "$TLS_MODE" = "1" ]; then
+    echo "端口 80/$HTTPS_PORT/$SS_PORT/$HY2_PORT/$TUIC_PORT 已全部释放，装新节点不会再报端口占用。"
+  else
+    echo "端口 80/$VLESS_PORT/$TROJAN_PORT/$VMESS_PORT/$SS_PORT 已全部释放，装新节点不会再报端口占用。"
+  fi
 fi
 
 # ---------- 3. 彻底删除时清理系统改动与目录 ----------
