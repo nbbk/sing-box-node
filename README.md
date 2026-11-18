@@ -6,6 +6,12 @@
 
 > 想要 Xray 内核的版本？看 [tiktok-node](https://github.com/nbbk/tiktok-node)（核心：Xray，VLESS + WS + TLS 单协议）。
 
+## 相关仓库
+
+- [tiktok-node](https://github.com/nbbk/tiktok-node)：落地节点，Xray 内核，VLESS + WS + TLS 单协议
+- [sing-box-node](https://github.com/nbbk/sing-box-node)（本仓库）：落地节点，sing-box 内核，VLESS/Trojan/VMess/Shadowsocks/Hysteria2/TUIC 6 协议合一
+- [relay-node](https://github.com/nbbk/relay-node)：中转，realm 纯转发，落地线路不好时提速
+
 在你自己的墙外服务器上跑一条命令，节点即上线。包里已把 DNS 防泄漏和速度优化做全，装完自带泄漏自检。
 
 ## 前置条件
