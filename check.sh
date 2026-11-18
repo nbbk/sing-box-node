@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
-# TikTok 节点泄漏自检：在节点服务器上运行，检查 IP 纯净度、地区、IPv6、DNS、TikTok 可达性
+# TikTok 节点泄漏自检：在节点服务器上运行，检查 IP 纯净度、地区、IPv6、DNS、TikTok 可达性、公开端口监听
 # 手机端的 DNS/WebRTC 泄漏需在手机上验证（脚本末尾会给出检查方法）
+# 公开端口从安装目录的 .env 读（install.sh 安装时写入实际端口）；没有 .env 就用默认端口
 set -uo pipefail
 
 pass() { echo "  [通过] $1"; }
 warn() { echo "  [注意] $1"; }
 fail() { echo "  [风险] $1"; }
 
-echo "== 1/5 节点 IP 与地区 =="
+echo "== 1/6 节点 IP 与地区 =="
 IPJSON="$(curl -s --max-time 10 "https://ip-api.org/json/" || true)"
 if [ -z "$IPJSON" ]; then
   warn "ip-api.org 查不到，改用 ipinfo.io"
@@ -42,7 +43,7 @@ else
 fi
 
 echo ""
-echo "== 2/5 IPv6 是否禁用 =="
+echo "== 2/6 IPv6 是否禁用 =="
 V6="$(sysctl -n net.ipv6.conf.all.disable_ipv6 2>/dev/null || echo "?")"
 if [ "$V6" = "1" ]; then
   pass "IPv6 已禁用（disable_ipv6=1）"
@@ -57,7 +58,7 @@ else
 fi
 
 echo ""
-echo "== 3/5 DNS 解析路径 =="
+echo "== 3/6 DNS 解析路径 =="
 if command -v dig >/dev/null 2>&1; then
   RESOLVER="$(dig +short whoami.akamai.net @1.1.1.1 2>/dev/null | head -1)"
   [ -n "$RESOLVER" ] && echo "  经 1.1.1.1 解析的出口解析器 IP：$RESOLVER（应为 Cloudflare 的 IP，非国内运营商）"
@@ -68,7 +69,7 @@ fi
 echo "  xray 已配置 DoH(1.1.1.1/8.8.8.8)+TCP 兜底、只解析 IPv4，服务端不再走明文 UDP 53"
 
 echo ""
-echo "== 4/5 TikTok 可达性（从节点 IP 出口测） =="
+echo "== 4/6 TikTok 可达性（从节点 IP 出口测） =="
 TT_CODE="$(curl -s -o /dev/null -w "%{http_code}" --max-time 15 "https://www.tiktok.com/" || echo "000")"
 API_CODE="$(curl -s -o /dev/null -w "%{http_code}" --max-time 15 "https://api16-normal-c-useast1a.tiktokv.com/" || echo "000")"
 echo "  tiktok.com -> HTTP $TT_CODE"
@@ -80,7 +81,7 @@ else
 fi
 
 echo ""
-echo "== 5/5 手机端自查（在手机上开着节点做） =="
+echo "== 5/6 手机端自查（在手机上开着节点做） =="
 echo "  节点只能管服务端这一半，手机端泄漏要这样验："
 echo "  1) 打开 https://www.dnsleaktest.com 点 Extended test："
 echo "     全部 DNS 服务器 IP 应该都是节点所在国家/机房的，出现中国运营商 DNS = 泄漏"
@@ -88,5 +89,57 @@ echo "  2) 打开 https://browserleaks.com/ip："
 echo "     不能出现你的真实 IP、不能出现 IPv6 地址、时区/语言要和节点地区一致"
 echo "  3) TikTok 里刷几个视频再看个人主页地区：应与节点地区一致"
 echo "  4) 手机设置核对（见 README）：已拔国内 SIM 卡、时区语言=节点地区、定位已关"
+echo ""
+echo "== 6/6 公开端口监听 =="
+# 端口从安装目录的 .env 读（install.sh 安装时写入实际端口）；没有 .env 就用默认端口
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+if [ -f "$SCRIPT_DIR/.env" ]; then
+  set -a; . "$SCRIPT_DIR/.env"; set +a
+  echo "  端口配置来自 $SCRIPT_DIR/.env"
+else
+  echo "  未找到 .env，按默认端口检查（TLS：HTTPS 443 / SS 8388 / HY2 8443 / TUIC 8444；明文：8080/8081/8082/8388）"
+fi
+TLS_MODE="${TLS_MODE:-1}"
+HTTPS_PORT="${HTTPS_PORT:-443}"; SS_PORT="${SS_PORT:-8388}"; HY2_PORT="${HY2_PORT:-8443}"; TUIC_PORT="${TUIC_PORT:-8444}"
+VLESS_PORT="${VLESS_PORT:-8080}"; TROJAN_PORT="${TROJAN_PORT:-8081}"; VMESS_PORT="${VMESS_PORT:-8082}"
+
+port_listening_tcp() {
+  local port="$1" hex
+  if command -v ss >/dev/null 2>&1; then
+    ss -tln 2>/dev/null | grep -qE "[:.]${port}[[:space:]]"
+  else
+    hex=$(printf '%04X' "$port")
+    grep -qiE "^[[:space:]]*[0-9]+:[[:space:]]+[0-9A-Fa-f]+:${hex}[[:space:]]" /proc/net/tcp /proc/net/tcp6 2>/dev/null
+  fi
+}
+port_listening_udp() {
+  local port="$1" hex
+  if command -v ss >/dev/null 2>&1; then
+    ss -uln 2>/dev/null | grep -qE "[:.]${port}[[:space:]]"
+  else
+    hex=$(printf '%04X' "$port")
+    grep -qiE "^[[:space:]]*[0-9]+:[[:space:]]+[0-9A-Fa-f]+:${hex}[[:space:]]" /proc/net/udp /proc/net/udp6 2>/dev/null
+  fi
+}
+check_port() { # check_port 名字 端口 tcp|udp|both
+  local name="$1" port="$2" proto="$3" ok=1
+  case "$proto" in
+    tcp) port_listening_tcp "$port" || ok=0 ;;
+    udp) port_listening_udp "$port" || ok=0 ;;
+    both) { port_listening_tcp "$port" && port_listening_udp "$port"; } || ok=0 ;;
+  esac
+  if [ "$ok" = "1" ]; then pass "$name 正在监听（端口 $port/$proto）"; else fail "$name 未监听（端口 $port/$proto），容器可能没起来，或端口被别的程序占了"; fi
+}
+if [ "$TLS_MODE" = "1" ]; then
+  check_port "HTTPS(WS)" "$HTTPS_PORT" tcp
+  check_port "Shadowsocks" "$SS_PORT" both
+  check_port "Hysteria2" "$HY2_PORT" udp
+  check_port "TUIC" "$TUIC_PORT" udp
+else
+  check_port "VLESS" "$VLESS_PORT" tcp
+  check_port "Trojan" "$TROJAN_PORT" tcp
+  check_port "VMess" "$VMESS_PORT" tcp
+  check_port "Shadowsocks" "$SS_PORT" both
+fi
 echo ""
 echo "自检完成。"
