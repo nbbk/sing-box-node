@@ -2,7 +2,7 @@
 
 **核心：sing-box**（v1.14，`ghcr.io/sagernet/sing-box:latest`）。一个核心同时跑 6 个协议：VLESS、Trojan、VMess、Shadowsocks、Hysteria2、TUIC。DNS 只走加密通道、永不回落明文，主机开 BBR 加速，Clash 自动选最快的协议。
 
-> 注意：TLS 模式要独占 80 和 443。如果这台机上已有 TikTok 节点（Xray 包）或其他程序占了 443，安装脚本会在一开始直接退出并提示——先停掉旧节点或换一台新服务器再跑。
+> 注意：TLS 模式要独占 80 端口（Caddy 签证书走 HTTP-01 验证必须用 80，改不了）和 HTTPS 端口（默认 443）。如果这台机上已有 TikTok 节点（Xray 包）或其他程序占了 443，安装时会问你要不要把 HTTPS 端口改成高位端口（如 8443）再装，不用换服务器。
 
 > 想要 Xray 内核的版本？看 [tiktok-node](https://github.com/nbbk/tiktok-node)（核心：Xray，VLESS + WS + TLS 单协议）。
 
@@ -17,7 +17,7 @@
 ## 前置条件
 
 - 一台墙外服务器（你机场现有的机器就行），Ubuntu/Debian，root 权限
-- 一个域名，已解析（A 记录）到这台机器，80/443 端口放行——**有域名强烈建议用**，Caddy 会自动签 TLS 证书，6 个协议全开
+- 一个域名，已解析（A 记录）到这台机器，80 端口放行——**有域名强烈建议用**，Caddy 会自动签 TLS 证书，6 个协议全开；**80 端口必须空闲**（签证书走 HTTP-01 验证必须用 80，改不了；80 被占 TLS 装不了，只能换服务器或改用明文）
   - 没有域名也能跑：直接回车跳过，用 IP 明文 WS（VLESS 8080 / Trojan 8081 / VMess 8082 + SS 8388），HY2/TUIC 不启用（需要域名证书），之后补域名重跑即可升级
 - 服务器地区 = 你要做的 TikTok 地区（美区、东南亚、英国……），**节点 IP 的地区必须和运营地区一致**，否则直接限流
 - IP 尽量干净：住宅/ISP 的 IP 最好；机房 IP 也能跑，但 TikTok 风控更严，`check.sh` 会告诉你当前 IP 是不是机房 IP
@@ -41,7 +41,7 @@ curl -fsSL https://raw.githubusercontent.com/nbbk/sing-box-node/main/install.sh 
 3. 有域名就输入域名，没有直接回车
 4. 脚本会自动：装 Docker → 禁用 IPv6 + 开 BBR/TCP 优化 → 生成全部凭据与随机 WS 路径 → 启动 sing-box + Caddy → 拨测 → 输出 6 个协议的节点链接、base64 订阅内容、`clash.yaml`，并在服务器上生成每个协议的二维码（`qr-vless.png`、`qr-trojan.png`、`qr-vmess.png`、`qr-ss.png`，TLS 模式另有 `qr-hy2.png`、`qr-tuic.png`；没有 qrencode 时自动用 apt/yum 安装），最后自动跑一遍 `check.sh` 自检
 
-## 协议与端口
+## 协议与端口（默认端口，安装时可自定义）
 
 | 协议 | TLS 模式（有域名） | 明文模式（无域名） | 说明 |
 |---|---|---|---|
@@ -52,7 +52,24 @@ curl -fsSL https://raw.githubusercontent.com/nbbk/sing-box-node/main/install.sh 
 | Hysteria2 | 8443/UDP | 不启用 | QUIC，弱网也快 |
 | TUIC | 8444/UDP | 不启用 | QUIC + BBR |
 
-每次运行都会覆盖之前的节点：重新生成新的 UUID/密码和 WS 路径，旧的节点链接就失效，手机上要重新导入新的。端口是固定的（443/8080/8081/8082/8388/8443/8444），随机的是 UUID、密码和 WS 路径。
+每次运行都会覆盖之前的节点：重新生成新的 UUID/密码和 WS 路径，旧的节点链接就失效，手机上要重新导入新的。端口默认是上面这套（443/8080/8081/8082/8388/8443/8444），随机的是 UUID、密码和 WS 路径；安装时可以把端口改成别的（见下节）。
+
+## 自定义端口（默认端口被占时用）
+
+安装到第 3 步会依次问每个公开端口，直接回车就是默认值；默认端口被占时填个高位端口就能装，不用换服务器：
+
+- TLS 模式：HTTPS 端口（默认 443，例如改 8443）、SS（默认 8388，例如改 18388）、HY2（默认 8443，例如改 18443）、TUIC（默认 8444，例如改 18444）
+- 明文模式：VLESS（默认 8080，例如改 18080）、Trojan（默认 8081，例如改 18081）、VMess（默认 8082，例如改 18082）、SS（默认 8388，例如改 18388）
+
+注意两点：**80 端口必须空闲**，Caddy 签证书走 HTTP-01 验证必须用 80，改不了——80 被占时 TLS 装不了，只能停掉占用 80 的程序、换服务器，或改用明文模式；HTTPS 端口也不能填 80。改完端口后，节点链接、`clash.yaml`、二维码里的端口都会跟着变，不用手动改。
+
+也可以用环境变量预设端口（有就不再问），例如：
+
+```
+HTTPS_PORT=8443 SS_PORT=18388 HY2_PORT=18443 TUIC_PORT=18444 bash install.sh 你的域名
+```
+
+安装完的实际端口记在安装目录的 `.env` 里（`check.sh` / `stop.sh` 从这里读）；重跑安装要换端口时仍会问，不会被上次的值悄悄定死（域名除外，域名会沿用 `.env` 里的，换域名用 `bash install.sh 新域名` 或改 `.env`）。
 
 ## 手机端（关键：节点只解决网络这一半）
 
@@ -87,19 +104,19 @@ TikTok 从 IP、DNS、时区、SIM 卡几个地方一起判断地区，节点配
 - **节点没网、手机全打不开**：先在服务器上测 WS 握手（装完脚本会自动测）：
   `curl -s -i -N --max-time 10 -H "Connection: Upgrade" -H "Upgrade: websocket" -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" -H "Sec-WebSocket-Version: 13" https://你的域名/WS路径`
   返回 `101` = 正常；返回 `200 ok` = Caddy 没把请求转给 sing-box，跑 `docker compose down && docker compose up -d` 重建容器再测；返回 `400` = sing-box 拒绝握手，核对手机上的 UUID 和 WS 路径跟 sing-box.json 是否一致。
-- **Caddy 拿不到证书**：核对域名 A 记录指到本机 IP、云厂商安全组放行 80/443；看日志 `docker logs singbox-caddy --tail 20`。
+- **Caddy 拿不到证书**：核对域名 A 记录指到本机 IP、云厂商安全组放行 80 端口和 HTTPS 端口（80 必须空闲，签证书走 HTTP-01 验证必须用 80）；看日志 `docker logs singbox-caddy --tail 20`。
 - **HY2/TUIC 没启用**：装完提示证书未就绪时会出现，重跑一次安装命令即可补上（会换一套新节点）。
 - **sing-box 起不来**：看日志 `docker logs singbox-node --tail 30`；也可以用 `sing-box check -c sing-box.json` 校验配置。
 
 ## 停止 / 删除节点
 
-- **停止（保留配置，可再启动）**：在节点目录里跑 `bash stop.sh`，会停掉容器并检查 80/443/8080/8081/8082/8388/8443/8444 是否已释放；再启动跑 `docker compose up -d`。远程一键（不用先下载）：`curl -fsSL https://raw.githubusercontent.com/nbbk/sing-box-node/main/stop.sh | bash`
+- **停止（保留配置，可再启动）**：在节点目录里跑 `bash stop.sh`，会停掉容器并按 `.env` 里记录的实际端口检查是否已释放（默认 80/443/8080/8081/8082/8388/8443/8444）；再启动跑 `docker compose up -d`。远程一键（不用先下载）：`curl -fsSL https://raw.githubusercontent.com/nbbk/sing-box-node/main/stop.sh | bash`
 - **彻底删除**：`bash stop.sh --remove`，会删容器、数据卷、配置目录，并恢复 IPv6 与网络调优（删 `/etc/sysctl.d/99-singbox-node.conf`）。远程一键：`curl -fsSL https://raw.githubusercontent.com/nbbk/sing-box-node/main/stop.sh | bash -s -- --remove`
 - **手动停**：`docker compose down`（保留配置）或 `docker compose down -v`（连数据卷一起删）
-- stop.sh 停完会逐个检查端口（TCP 和 UDP 都查）：如果某个端口仍被占用，会直接列出占用它的进程，照着处理就行；如果占用它的是别的程序，先停掉那个程序或换一台服务器。
+- stop.sh 停完会逐个检查端口（TCP 和 UDP 都查，按 `.env` 里的实际端口）：如果某个端口仍被占用，会直接列出占用它的进程，照着处理就行；如果占用它的是别的程序，先停掉那个程序或换一台服务器。
 
 ## 说明
 
-- 架构：有域名时 Caddy 在 443 终止 TLS，只把随机 WS 路径反代到 sing-box，其余请求返回普通网页响应（伪装）；HY2/TUIC 直接走 UDP，用 Caddy 签下的证书；SS 直连 8388
+- 架构：有域名时 Caddy 在 HTTPS 端口（默认 443，可自定义高位端口）终止 TLS，只把随机 WS 路径反代到 sing-box，其余请求返回普通网页响应（伪装）；HY2/TUIC 直接走 UDP，用 Caddy 签下的证书；SS 直连（默认 8388，可自定义）
 - 链接里的 UUID/密码等同于密码，不要外传；泄露了重跑脚本即可换一套
 - 如果 `check.sh` 显示 hosting=true（机房 IP）且之后出现 0 播放/限流，优先换住宅/ISP 的干净 IP，换节点比调参数管用
