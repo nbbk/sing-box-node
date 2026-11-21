@@ -1,3 +1,11 @@
+> **已合并**：本仓库已合并到 [nbbk/landing-node](https://github.com/nbbk/landing-node)，新仓一键安装第一步先选核心（[1] Xray 或 [2] sing-box 二选一）。新一键命令：
+>
+> ```bash
+> curl -fsSL https://raw.githubusercontent.com/nbbk/landing-node/main/install.sh | bash -s [域名]
+> ```
+>
+> 旧一键命令重跑会自动装新版。已装好的机器不受影响：本地安装目录里的旧版 `install.sh` 不动，已跑起来的节点不用重装；想用新版管理脚本接管旧目录，见新仓 README“老机器接管”一节。
+
 # sing-box 运营节点一键包（一个核心管所有协议）
 
 **核心：sing-box**（v1.14，`ghcr.io/sagernet/sing-box:latest`）。一个核心同时跑 6 个协议：VLESS、Trojan、VMess、Shadowsocks、Hysteria2、TUIC。DNS 只走加密通道、永不回落明文，主机开 BBR 加速，Clash 自动选最快的协议。
